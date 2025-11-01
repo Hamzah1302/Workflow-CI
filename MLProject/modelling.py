@@ -8,77 +8,80 @@ from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
 import os
+import warnings
 
-# HAPUS BARIS INI: mlflow.set_experiment("Lung Cancer CI")
-# Eksperimen sudah diatur oleh file MLProject
+# Mengabaikan warning (opsional, tapi baik untuk kebersihan log)
+warnings.filterwarnings("ignore")
 
+# --- Mulai MLflow Run ---
+# PERBAIKAN: Kita memulai run secara eksplisit di dalam skrip
+# alih-alih mencoba menemukan run yang sudah ada.
 print("Memulai run MLflow...")
+with mlflow.start_run() as run:
+    # Dapatkan run_id dari objek 'run' yang baru dibuat
+    run_id = run.info.run_id
+    print(f"Run ID: {run_id}")
 
-# Kembali ke kode asli Anda: Dapatkan run yang dibuat oleh 'mlflow run'
-run = mlflow.active_run()
+    # --- 1. Muat Data ---
+    # MLflow run dieksekusi dari root folder MLProject
+    data_path = "lung_cancer_preprocessed.csv"
+    df = pd.read_csv(data_path)
 
-# Periksa jika run tidak ditemukan (untuk keamanan)
-if run is None:
-    raise RuntimeError("Tidak dapat menemukan MLflow run yang aktif. "
-                       "Pastikan skrip ini dijalankan menggunakan 'mlflow run'.")
+    X = df.drop(columns=['LUNG_CANCER'])
+    y = df['LUNG_CANCER']
 
-run_id = run.info.run_id
-print(f"Run ID: {run_id}")
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    print("Data dimuat dan dibagi.")
 
-# --- 1. Muat Data ---
-# MLflow run dieksekusi dari root folder MLProject
-data_path = "lung_cancer_preprocessed.csv"
-df = pd.read_csv(data_path)
+    # --- 2. Hyperparameter Tuning ---
+    param_grid = {
+        'C': [0.1, 1, 10],
+        'solver': ['liblinear'],
+        'penalty': ['l1', 'l2']
+    }
+    lr = LogisticRegression(max_iter=1000, random_state=42)
+    grid_search = GridSearchCV(estimator=lr, param_grid=param_grid, cv=3, scoring='accuracy', n_jobs=-1)
 
-X = df.drop(columns=['LUNG_CANCER'])
-y = df['LUNG_CANCER']
+    print("Memulai training (GridSearchCV)...")
+    grid_search.fit(X_train, y_train)
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-print("Data dimuat dan dibagi.")
+    best_model = grid_search.best_estimator_
+    y_pred = best_model.predict(X_test)
 
-# --- 2. Hyperparameter Tuning ---
-param_grid = {
-    'C': [0.1, 1, 10],
-    'solver': ['liblinear'],
-    'penalty': ['l1', 'l2']
-}
-lr = LogisticRegression(max_iter=1000, random_state=42)
-grid_search = GridSearchCV(estimator=lr, param_grid=param_grid, cv=3, scoring='accuracy', n_jobs=-1)
+    # --- 3. Manual Logging ---
+    # Semua logging (log_params, log_metric, log_artifact)
+    # harus berada di dalam blok 'with mlflow.start_run()'.
+    print("Mencatat parameter dan metrik...")
+    mlflow.log_params(grid_search.best_params_)
 
-print("Memulai training (GridSearchCV)...")
-grid_search.fit(X_train, y_train)
+    accuracy = accuracy_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred)
 
-best_model = grid_search.best_estimator_
-y_pred = best_model.predict(X_test)
+    mlflow.log_metric("test_accuracy", accuracy)
+    mlflow.log_metric("test_f1_score", f1)
 
-# --- 3. Manual Logging ---
-print("Mencatat parameter dan metrik...")
-mlflow.log_params(grid_search.best_params_)
+    # --- 4. Log Artefak (Model & Plot) ---
+    print("Mencatat artefak...")
 
-accuracy = accuracy_score(y_test, y_pred)
-f1 = f1_score(y_test, y_pred)
+    # Plot Confusion Matrix
+    cm = confusion_matrix(y_test, y_pred)
+    fig, ax = plt.subplots()
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
+    ax.set_title('Confusion Matrix (Test Set)')
+    ax.set_xlabel('Predicted')
+    ax.set_ylabel('Actual')
 
-mlflow.log_metric("test_accuracy", accuracy)
-mlflow.log_metric("test_f1_score", f1)
+    plot_path = "training_confusion_matrix.png"
+    plt.savefig(plot_path)
+    mlflow.log_artifact(plot_path)
+    
+    # Pastikan file dihapus setelah di-log
+    if os.path.exists(plot_path):
+        os.remove(plot_path)
 
-# --- 4. Log Artefak (Model & Plot) ---
-print("Mencatat artefak...")
+    # Log Model
+    mlflow.sklearn.log_model(best_model, "model")
 
-# Plot Confusion Matrix
-cm = confusion_matrix(y_test, y_pred)
-fig, ax = plt.subplots()
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-ax.set_title('Confusion Matrix (Test Set)')
-ax.set_xlabel('Predicted')
-ax.set_ylabel('Actual')
+    print(f"Model tersimpan di run {run_id}")
+    print("Run MLflow selesai.")
 
-plot_path = "training_confusion_matrix.png"
-plt.savefig(plot_path)
-mlflow.log_artifact(plot_path)
-os.remove(plot_path)
-
-# Log Model
-mlflow.sklearn.log_model(best_model, "model")
-
-print(f"Model tersimpan di run {run_id}")
-print("Run MLflow selesai.")

@@ -26,8 +26,8 @@ jobs:
           environment-file: MLProject/conda.yaml
           
       - name: 3. Install MLflow
-        run: pip install "mlflow<3"
-        shell: bash -el {0} 
+        run: pip install "mlflow==2.22.1"
+        shell: bash -el {0}
 
       - name: 4. Run MLflow Project (Training)
         run: |

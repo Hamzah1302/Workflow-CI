@@ -1,0 +1,74 @@
+name: MLflow CI-CD (LFS & Docker)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 2. Set up Git LFS
+        uses: git-lfs/setup-lfs@v1.0.0
+
+      - name: 3. Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: 4. Set up Conda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: '3.10'
+          auto-activate-base: false
+          activate-environment: lung-cancer-env
+          environment-file: MLProject/conda.yaml
+          
+      - name: 5. Install MLflow
+        run: pip install "mlflow<3"
+
+      - name: 6. Run MLflow Project (Training)
+        run: |
+          # Menjalankan MLProject. Ini akan otomatis membuat folder 'mlruns'
+          mlflow run MLProject/
+        shell: bash -el {0} # Diperlukan untuk menggunakan env conda
+
+      - name: 7. Get latest MLflow run_id
+        # Menemukan ID run terakhir dari eksperimen default (ID 0)
+        id: get_run
+        run: |
+          RUN_ID=$(mlflow runs list --experiment-id 0 | awk 'FNR == 2 {print $1}')
+          echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
+        shell: bash -el {0}
+
+      - name: 8. Upload Model Artifact to GitHub LFS
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add mlruns/
+          git commit -m "CI: Add trained model artifact from run ${{ env.RUN_ID }}" || echo "No changes to commit"
+          git push
+          
+      - name: 9. Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 10. Build Docker Model Image
+        # NAMA REPO DOCKER HUB ANDA YANG BENAR
+        run: |
+          echo "Building Docker image for run_id: ${{ env.RUN_ID }}"
+          mlflow models build-docker -m "runs:/${{ env.RUN_ID }}/model" -n "muhamadhamzah/workflow-ci" --enable-mlserver
+        shell: bash -el {0}
+          
+      - name: 11. Push Docker Image to Docker Hub
+        # NAMA REPO DOCKER HUB ANDA YANG BENAR
+        run: |
+          docker push "muhamadhamzah/workflow-ci:latest"

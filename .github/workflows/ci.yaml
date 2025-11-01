@@ -64,7 +64,6 @@ jobs:
           echo "Building Docker image for run_id: ${{ env.RUN_ID }}"
           mlflow models build-docker -m "runs:/${{ env.RUN_ID }}/model" -n "muhamadhamzah/workflow-ci"
         shell: bash -el {0}
-
         
           
       - name: 9. Push Docker Image to Docker Hub

@@ -80,7 +80,7 @@ with mlflow.start_run() as run:
         os.remove(plot_path)
 
     # Log Model
-    mlflow.sklearn.log_model(best_model, "model")
+    mlflow.sklearn.log_model(best_model, "model", conda_env="conda.yaml")
 
     print(f"Model tersimpan di run {run_id}")
     print("Run MLflow selesai.")

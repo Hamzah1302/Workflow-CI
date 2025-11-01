@@ -62,7 +62,7 @@ jobs:
       - name: 8. Build Docker Model Image
         run: |
           echo "Building Docker image for run_id: ${{ env.RUN_ID }}"
-          mlflow models build-docker -m "runs:/${{ env.RUN_ID }}/model" -n "muhamadhamzah/workflow-ci" --enable-mlserver
+          mlflow models build-docker -m "runs:/${{ env.RUN_ID }}/model" -n "muhamadhamzah/workflow-ci"
         shell: bash -el {0}
 
         
